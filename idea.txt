@@ -1,0 +1,151 @@
+PYTHON TEMPLATE
+
+from mesa import Agent, Model
+from mesa.space import MultiGrid
+
+# this is agent 1
+# properties of agent:  growth rate, antibiotic resistance, etc.
+class Bacterium(Agent):
+    def __init__(self, unique_id, model):
+        super().__init__(unique_id, model)
+        self.resistance = ...  # Define resistance
+
+    def step(self):
+        ...  # Define behavior
+
+# this is agent 2
+# properties of agent: concentration, efficacy, etc.
+class Antibiotic(Agent):
+    def __init__(self, unique_id, model):
+        super().__init__(unique_id, model)
+        self.concentration = ...  # Define concentration
+
+    def step(self):
+        ...  # Define behavior
+
+
+class BacterialAntibioticModel(Model):
+    def __init__(self, width, height):
+        self.grid = MultiGrid(width, height, True) # Our 2D grid
+        ...  # Add agents
+
+    def step(self):
+        ...  # Define simulation step
+
+CPP TEMPLATE
+
+#include <vector>
+
+// Define the Bacteria class
+class Bacteria {
+public:
+    // Constructor
+    Bacteria(/* parameters */) {
+        // Initialize properties
+    }
+
+    // Methods
+    void move() {
+        // Implement movement behavior
+    }
+
+    void reproduce() {
+        // Implement reproduction behavior
+    }
+
+    void die() {
+        // Implement death behavior
+    }
+
+    // Other methods as needed
+};
+
+// Define the Antibiotic class
+class Antibiotic {
+public:
+    // Constructor
+    Antibiotic(/* parameters */) {
+        // Initialize properties
+    }
+
+    // Methods
+    void move() {
+        // Implement movement behavior
+    }
+
+    void kill(Bacteria& bacteria) {
+        // Implement killing behavior
+    }
+
+    void degrade() {
+        // Implement degradation behavior
+    }
+
+    // Other methods as needed
+};
+
+// Define the Environment class
+class Environment {
+public:
+    // Constructor
+    Environment(/* parameters */) {
+        // Initialize properties
+    }
+
+    // Methods
+    void update() {
+        // Implement update behavior
+    }
+
+    // Other methods as needed
+};
+
+int main() {
+    // Initialize environment
+    Environment environment(/* parameters */);
+
+    // Initialize bacteria
+    std::vector<Bacteria> bacteria;
+    // Add bacteria to the vector
+
+    // Initialize antibiotics
+    std::vector<Antibiotic> antibiotics;
+    // Add antibiotics to the vector
+
+    // Main simulation loop
+    while (/* simulation is not over */) {
+        for (Bacteria& bacterium : bacteria) {
+            bacterium.move();
+            // Other actions as needed
+        }
+
+        for (Antibiotic& antibiotic : antibiotics) {
+            antibiotic.move();
+            // Other actions as needed
+        }
+
+        environment.update();
+        // Record statistics
+    }
+
+    // Analyze results
+
+    return 0;
+}
+
+SOME AGENT-BASED MODELING LIBRARIES IN CPP
+
+    - Boost: provides support for tasks such as linear algebra, pseudorandom 
+             number generation, multithreading, image processing, regular 
+             expressions, and unit testing
+
+    - Repast HPC: provides a framework for creating, running, and analyzing agent-based models
+
+    - FLAME GPU: allows you to leverage the power of GPUs to run large-scale agent-based simulations
+
+    - MASON: a multi-agent simulation library that provides a framework for creating, running,
+             and analyzing agent-based models
+
+    - SFML (Simple and Fast Multimedia Library): to visualize your simulation, provides a 
+                                                 simple interface to various components of your 
+                                                 PC, to ease the development of games and multimedia applications

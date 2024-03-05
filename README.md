@@ -1,4 +1,4 @@
-Simulation of Bacterial-Antibiotic Interactions Using Agent-based Modeling
+**Simulation of Bacterial-Antibiotic Interactions Using Agent-based Modeling**
 
 **Computational Question**
 Can we use evolutionary simulations to model the emergence and spread of antibiotic resistance under different conditions due to antibiotic effects?

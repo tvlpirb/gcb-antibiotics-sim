@@ -12,7 +12,6 @@ class BacteriaAgent(mesa.Agent):
     
     def step(self):
         self.uptake_nutrient()
-        print("Ate nutrients")
         #pass
 
     def uptake_nutrient(self):

@@ -1,9 +1,6 @@
 import mesa
 from mesa.space import PropertyLayer
 import numpy as np 
-import seaborn as sns
-import pandas as pd
-import copy
 
 class BacteriaAgent(mesa.Agent):
     def __init__(self, unique_id, model, uptake_rate):
@@ -25,14 +22,17 @@ class BacteriaAgent(mesa.Agent):
         return nutrient
 
 class SimModel(mesa.Model):
-    def __init__(self, width, height, uptake_rate=0.1): # changed
+    def __init__(self, params):
         super().__init__()
-        self.num_agents = 10
-        self.diffusion_coefficient = 0.1
+        self.num_agents = params["num_agents"]
+        self.width = params["width"]
+        self.height = params["height"]
+        uptake_rate = params["uptake_rate"]
+        self.diffusion_coefficient = params["diffusion_coefficient"]
         
         # Initialize Grid Properties
-        self.grid = mesa.space.MultiGrid(width,height,True)
-        nutrient_layer = PropertyLayer("nutrient",width,height,default_value=0)
+        self.grid = mesa.space.MultiGrid(self.width,self.height,True)
+        nutrient_layer = PropertyLayer("nutrient",self.width,self.height,default_value=0)
         nutrient_layer.modify_cells(lambda x: np.random.random())
         self.grid.add_property_layer(nutrient_layer)
         
@@ -41,7 +41,7 @@ class SimModel(mesa.Model):
        
         # Initialize Agents
         for i in range(self.num_agents):
-            a = BacteriaAgent(i,self, uptake_rate) # changed
+            a = BacteriaAgent(i,self, uptake_rate) 
             self.schedule.add(a)
             x = self.random.randrange(self.grid.width)
             y = self.random.randrange(self.grid.height)

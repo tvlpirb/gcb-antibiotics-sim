@@ -24,11 +24,13 @@ class BacteriaAgent(mesa.Agent):
 class SimModel(mesa.Model):
     def __init__(self, params):
         super().__init__()
-        self.num_agents = params["num_agents"]
         self.width = params["width"]
         self.height = params["height"]
-        uptake_rate = params["uptake_rate"]
         self.diffusion_coefficient = params["diffusion_coefficient"]
+        self.num_agents = params["num_agents"]
+        uptake_rate = params["uptake_rate"]
+        biomass_threshold = params["biomass_threshold"]
+        lag_phase = params["lag_phase"]
         
         # Initialize Grid Properties
         self.grid = mesa.space.MultiGrid(self.width,self.height,True)

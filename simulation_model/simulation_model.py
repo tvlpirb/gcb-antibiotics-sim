@@ -65,13 +65,13 @@ class SimModel(mesa.Model):
         biomass_threshold = params["biomass_threshold"]
 
         # To visualize the biomass, bacteria count and size
-        self.datacollector = DataCollector(
-            {
-                "Total Biomass": lambda m: m.total_biomass(),
-                "Bacteria Count": lambda m: m.schedule.get_agent_count(),
-                "Average Size": lambda m: sum(agent.size for agent in m.schedule.agents) / m.schedule.get_agent_count(),
-            }
-        )
+        # self.datacollector = DataCollector(
+        #     {
+        #         "Total Biomass": lambda m: m.total_biomass(),
+        #         "Bacteria Count": lambda m: m.schedule.get_agent_count(),
+        #         "Average Size": lambda m: sum(agent.size for agent in m.schedule.agents) / m.schedule.get_agent_count(),
+        #     }
+        # )
 
         # Initialize Grid Properties
         self.grid = mesa.space.MultiGrid(self.width,self.height,True)
@@ -99,7 +99,7 @@ class SimModel(mesa.Model):
         self.total_biomass()
 
         # To visualize the biomass, bacteria count and size
-        self.datacollector.collect(self)
+        # self.datacollector.collect(self)
 
     def total_biomass(self):
         total_biomass = 0

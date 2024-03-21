@@ -1,15 +1,43 @@
 import mesa
 from mesa.space import PropertyLayer
-import numpy as np 
+import numpy as np
 
 class BacteriaAgent(mesa.Agent):
-    def __init__(self, unique_id, model, uptake_rate):
+    def __init__(self, unique_id, model, uptake_rate, initial_size, initial_biomass, biomass_threshold):
         super().__init__(unique_id, model)
-        self.uptake_rate = uptake_rate # added
+        self.uptake_rate = uptake_rate
+        self.size = initial_size
+        self.biomass = initial_biomass
+        self.split_threshold = 2 * initial_size  # Bacteria splits when its size has doubled
+        self.biomass_threshold = biomass_threshold
     
     def step(self):
-        self.uptake_nutrient()
-        #pass
+        # self.uptake_nutrient()
+        self.grow()
+        if self.ready_to_split():
+            self.split()
+
+    def grow(self):
+        # Get the nutrient uptake
+        nutrient_uptake = self.uptake_nutrient()
+        # Increase the size based on the nutrient uptake
+        self.size += nutrient_uptake
+        # Update biomass
+        self.biomass = self.size * 1.5 # Assume a constant conversion factor of 1.5 (this is an arbitary number for now)
+
+    def ready_to_split(self):
+        # Bacteria is ready to split if its size is greater than the split 
+        # threshold and the environment can support more biomass
+        return self.size >= self.split_threshold and self.model.total_biomass() < self.model.biomass_threshold
+    
+    def split(self):
+        # Create a new bacterium with half the size and biomass of the current one
+        new_bacteria = BacteriaAgent(self.model.next_id(), self.model, self.uptake_rate, self.size / 2, self.biomass / 2, self.biomass_threshold)
+        self.model.schedule.add(new_bacteria)
+        self.model.grid.place_agent(new_bacteria, self.pos)
+        # Halve the size and weight of the current bacterium
+        self.size /= 2
+        self.biomass /= 2
 
     def uptake_nutrient(self):
         # Get the current cell of the bacterium
@@ -20,6 +48,7 @@ class BacteriaAgent(mesa.Agent):
         # Subtract the uptaken nutrients from the nutrient level in the cell
         self.model.grid.properties["nutrient"].data[x][y] -= min(self.uptake_rate * nutrient, nutrient)
         return nutrient
+        # return min(self.uptake_rate * nutrient, nutrient)
 
 class SimModel(mesa.Model):
     def __init__(self, params):
@@ -29,9 +58,21 @@ class SimModel(mesa.Model):
         self.diffusion_coefficient = params["diffusion_coefficient"]
         self.num_agents = params["num_agents"]
         uptake_rate = params["uptake_rate"]
+        # lag_phase = params["lag_phase"] # idk what to do with this
+        initial_size = params["initial_size"]
+        initial_biomass = params["initial_biomass"]
+        # division_rate = params["division_rate"]
         biomass_threshold = params["biomass_threshold"]
-        lag_phase = params["lag_phase"]
-        
+
+        # To visualize the biomass, bacteria count and size
+        # self.datacollector = DataCollector(
+        #     {
+        #         "Total Biomass": lambda m: m.total_biomass(),
+        #         "Bacteria Count": lambda m: m.schedule.get_agent_count(),
+        #         "Average Size": lambda m: sum(agent.size for agent in m.schedule.agents) / m.schedule.get_agent_count(),
+        #     }
+        # )
+
         # Initialize Grid Properties
         self.grid = mesa.space.MultiGrid(self.width,self.height,True)
         nutrient_layer = PropertyLayer("nutrient",self.width,self.height,default_value=0)
@@ -43,7 +84,7 @@ class SimModel(mesa.Model):
        
         # Initialize Agents
         for i in range(self.num_agents):
-            a = BacteriaAgent(i,self, uptake_rate) 
+            a = BacteriaAgent(i,self, uptake_rate, initial_size, initial_biomass, biomass_threshold) 
             self.schedule.add(a)
             x = self.random.randrange(self.grid.width)
             y = self.random.randrange(self.grid.height)
@@ -55,6 +96,16 @@ class SimModel(mesa.Model):
         # Runtime went from 75 seconds to 5 seconds for 1000 steps
         #self.diffuse_nutrients_vectorized()
         self.diffuse_nutrients()
+        self.total_biomass()
+
+        # To visualize the biomass, bacteria count and size
+        # self.datacollector.collect(self)
+
+    def total_biomass(self):
+        total_biomass = 0
+        for agent in self.schedule.agents:
+            total_biomass += agent.biomass
+        return total_biomass
         
     def diffuse_nutrients(self):
         new_nutrient_distribution = np.copy(self.grid.properties["nutrient"].data)

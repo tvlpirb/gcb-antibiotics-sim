@@ -3,13 +3,14 @@ from mesa.space import PropertyLayer
 import numpy as np
 
 class BacteriaAgent(mesa.Agent):
-    def __init__(self, unique_id, model, uptake_rate, initial_size, initial_biomass, biomass_threshold, alive):
+    def __init__(self, unique_id, model, params):
         super().__init__(unique_id, model)
-        self.uptake_rate = uptake_rate
-        self.size = initial_size
-        self.biomass = initial_biomass
-        self.split_threshold = 2 * initial_size  # Bacteria splits when its size has doubled
-        self.biomass_threshold = biomass_threshold
+        self.params = params
+        self.uptake_rate = params["uptake_rate"]
+        self.size = params["initial_size"]
+        self.biomass = params["initial_biomass"]
+        self.split_threshold = 2 * params["initial_size"]  # Bacteria splits when its size has doubled
+        self.biomass_threshold = params["biomass_threshold"]
         self.alive = True
     
     def step(self):
@@ -17,7 +18,13 @@ class BacteriaAgent(mesa.Agent):
         self.grow()
         if self.ready_to_split():
             self.split()
-
+            
+    def total_biomass(self):
+        total_biomass = 0
+        for agent in self.model.schedule.agents:
+            total_biomass += agent.biomass
+        return total_biomass
+    
     def grow(self):
         # Get the nutrient uptake
         nutrient_uptake = self.uptake_nutrient()
@@ -29,11 +36,14 @@ class BacteriaAgent(mesa.Agent):
     def ready_to_split(self):
         # Bacteria is ready to split if its size is greater than the split 
         # threshold and the environment can support more biomass
-        return self.size >= self.split_threshold and self.model.total_biomass() < self.model.biomass_threshold
+        return self.size >= self.split_threshold and self.total_biomass() < self.params["biomass_threshold"]
     
     def split(self):
         # Create a new bacterium with half the size and biomass of the current one
-        new_bacteria = BacteriaAgent(self.model.next_id(), self.model, self.uptake_rate, self.size / 2, self.biomass / 2, self.biomass_threshold)
+        paramsC = self.params.copy()
+        paramsC["initial_size"] = self.size / 2
+        paramsC["initial_biomass"] = self.biomass / 2
+        new_bacteria = BacteriaAgent(self.model.next_id(), self.model, paramsC)
         self.model.schedule.add(new_bacteria)
         self.model.grid.place_agent(new_bacteria, self.pos)
         # Halve the size and weight of the current bacterium
@@ -62,32 +72,6 @@ class BacteriaAgent(mesa.Agent):
     # def interact_with_antibiotic(self, antibiotic):
 
     # def interact_with_enzyme(self, enzyme):
-    
-class AntibioticAgent(mesa.Agent):
-    def __init__(self, unique_id, model, concentration, threshold):
-        super().__init__(unique_id, model)
-        self.concentration = concentration
-        self.threshold = threshold
-
-    def step(self):
-        self.diffuse()
-
-    def diffuse(self):
-        # implement Fick's first law of diffusion here
-        pass
-
-    def interact_with_bacteria(self, bacteria):
-        # If the antibiotic concentration is above the bacteria's resistance threshold, kill the bacteria
-        if self.concentration > bacteria.resistance_threshold:
-            bacteria.alive = False
-
-class Enzyme(mesa.Agent):
-    def __init__(self, unique_id, model, enzyme_type):
-        super().__init__(unique_id, model)
-        self.enzyme_type = enzyme_type
-
-    def step(self):
-        pass
 
 class SimModel(mesa.Model):
     def __init__(self, params):
@@ -96,21 +80,6 @@ class SimModel(mesa.Model):
         self.height = params["height"]
         self.diffusion_coefficient = params["diffusion_coefficient"]
         self.num_agents = params["num_agents"]
-        uptake_rate = params["uptake_rate"]
-        # lag_phase = params["lag_phase"] # idk what to do with this
-        initial_size = params["initial_size"]
-        initial_biomass = params["initial_biomass"]
-        # division_rate = params["division_rate"]
-        biomass_threshold = params["biomass_threshold"]
-
-        # To visualize the biomass, bacteria count and size
-        # self.datacollector = DataCollector(
-        #     {
-        #         "Total Biomass": lambda m: m.total_biomass(),
-        #         "Bacteria Count": lambda m: m.schedule.get_agent_count(),
-        #         "Average Size": lambda m: sum(agent.size for agent in m.schedule.agents) / m.schedule.get_agent_count(),
-        #     }
-        # )
 
         # Initialize Grid Properties
         self.grid = mesa.space.MultiGrid(self.width,self.height,True)
@@ -123,7 +92,7 @@ class SimModel(mesa.Model):
        
         # Initialize Agents
         for i in range(self.num_agents):
-            a = BacteriaAgent(i,self, uptake_rate, initial_size, initial_biomass, biomass_threshold, alive=True)
+            a = BacteriaAgent(i,self, params)
             self.schedule.add(a)
             x = self.random.randrange(self.grid.width)
             y = self.random.randrange(self.grid.height)
@@ -133,39 +102,11 @@ class SimModel(mesa.Model):
         self.schedule.step()
         # Vectorized version should have a major speedup
         # Runtime went from 75 seconds to 5 seconds for 1000 steps
-        #self.diffuse_nutrients_vectorized()
-        self.diffuse_nutrients()
-        self.total_biomass()
+        self.diffuse_nutrients_vectorized()
+        #self.total_biomass()
 
-        # To visualize the biomass, bacteria count and size
-        # self.datacollector.collect(self)
-
-    def total_biomass(self):
-        total_biomass = 0
-        for agent in self.schedule.agents:
-            total_biomass += agent.biomass
-        return total_biomass
-        
-    def diffuse_nutrients(self):
-        new_nutrient_distribution = np.copy(self.grid.properties["nutrient"].data)
-        for x in range(self.grid.width):
-            for y in range(self.grid.height):
-                for dx in [-1, 0, 1]:
-                    for dy in [-1, 0, 1]:
-                        if dx == 0 and dy == 0: continue  # Skip self
-                        x2 = (x + dx) % self.grid.width
-                        y2 = (y + dy) % self.grid.height
-                        diff = (self.grid.properties["nutrient"].data[x2][y2] -
-                                self.grid.properties["nutrient"].data[x][y])
-                        if dx == 0 or dy == 0:  # Adjacent
-                            transfer = diff * self.diffusion_coefficient
-                        else:  # Diagonal
-                            transfer = (diff * self.diffusion_coefficient) / np.sqrt(2)
-                        new_nutrient_distribution[x][y] += transfer
-                        new_nutrient_distribution[x2][y2] -= transfer
-        
-        self.grid.properties["nutrient"].data = new_nutrient_distribution
-
+    
+    
     def diffuse_nutrients_vectorized(self):
         # Extract the current nutrient grid for convenience
         nutrient_grid = self.grid.properties["nutrient"].data

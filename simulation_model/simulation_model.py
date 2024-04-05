@@ -6,22 +6,20 @@ class BacteriaAgent(mesa.Agent):
     def __init__(self, unique_id, model, params):
         super().__init__(unique_id, model)
         self.params = params
+        self.uptake_rate_antibiotic = params["uptake_rate_antibiotic"]
         self.uptake_rate = params["uptake_rate"]
-        self.size = params["initial_size"]
         self.biomass = params["initial_biomass"]
-        self.split_threshold = 2 * params["initial_size"]  # Bacteria splits when its size has doubled
         self.biomass_threshold = params["biomass_threshold"]
         self.alive = True
     
     def step(self):
-        # self.uptake_nutrient()
         self.grow()
         if self.ready_to_split():
             self.split()
             
     def total_biomass(self):
         total_biomass = 0
-        for agent in self.model.schedule.agents:
+        for agent in self.model.schedule.agents: # type: ignore
             total_biomass += agent.biomass
         return total_biomass
     
@@ -29,37 +27,30 @@ class BacteriaAgent(mesa.Agent):
         # Get the nutrient uptake
         nutrient_uptake = self.uptake_nutrient()
         # Increase the size based on the nutrient uptake
-        self.size += nutrient_uptake
-        # Update biomass
-        self.biomass = self.size * 1.5 # Assume a constant conversion factor of 1.5 (this is an arbitary number for now)
+        self.biomass += nutrient_uptake
 
     def ready_to_split(self):
         # Bacteria is ready to split if its size is greater than the split 
-        # threshold and the environment can support more biomass
-        return self.size >= self.split_threshold and self.total_biomass() < self.params["biomass_threshold"]
+        # threshold 
+        return self.biomass >= self.biomass_threshold
     
     def split(self):
         # Create a new bacterium with half the size and biomass of the current one
         paramsC = self.params.copy()
-        paramsC["initial_size"] = self.size / 2
         paramsC["initial_biomass"] = self.biomass / 2
         new_bacteria = BacteriaAgent(self.model.next_id(), self.model, paramsC)
-        self.model.schedule.add(new_bacteria)
-        self.model.grid.place_agent(new_bacteria, self.pos)
+        self.model.schedule.add(new_bacteria) # type: ignore
+        self.model.grid.place_agent(new_bacteria, self.pos) # type: ignore
         # Halve the size and weight of the current bacterium
-        self.size /= 2
         self.biomass /= 2
 
     def uptake_nutrient(self):
-        # Get the current cell of the bacterium
-        x, y = self.pos
+        x, y = self.pos # type: ignore
         # Get the current nutrient level in this cell
-        nutrient = self.model.grid.properties["nutrient"].data[x][y]
+        nutrient = self.model.grid.properties["nutrient"].data[x][y] # type: ignore
         # Uptake only the available nutrients
-        # Subtract the uptaken nutrients from the nutrient level in the cell
-        self.model.grid.properties["nutrient"].data[x][y] -= min(self.uptake_rate * nutrient, nutrient)
+        self.model.grid.properties["nutrient"].data[x][y] -= min(self.uptake_rate * nutrient, nutrient) # type: ignore
         return nutrient
-        # return min(self.uptake_rate * nutrient, nutrient)
 
     # need to implement living status of bacteria
     def is_alive(self):
@@ -94,8 +85,8 @@ class SimModel(mesa.Model):
         for i in range(self.num_agents):
             a = BacteriaAgent(i,self, params)
             self.schedule.add(a)
-            x = self.random.randrange(self.grid.width)
-            y = self.random.randrange(self.grid.height)
+            x = self.random.randrange(self.grid.width) # type: ignore
+            y = self.random.randrange(self.grid.height) # type: ignore
             self.grid.place_agent(a, (x, y))
     
     def step(self):
@@ -103,9 +94,6 @@ class SimModel(mesa.Model):
         # Vectorized version should have a major speedup
         # Runtime went from 75 seconds to 5 seconds for 1000 steps
         self.diffuse_nutrients_vectorized()
-        #self.total_biomass()
-
-    
     
     def diffuse_nutrients_vectorized(self):
         # Extract the current nutrient grid for convenience

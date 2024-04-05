@@ -3,13 +3,14 @@ from mesa.space import PropertyLayer
 import numpy as np
 
 class BacteriaAgent(mesa.Agent):
-    def __init__(self, unique_id, model, uptake_rate, initial_size, initial_biomass, biomass_threshold):
+    def __init__(self, unique_id, model, uptake_rate, initial_size, initial_biomass, biomass_threshold, alive):
         super().__init__(unique_id, model)
         self.uptake_rate = uptake_rate
         self.size = initial_size
         self.biomass = initial_biomass
         self.split_threshold = 2 * initial_size  # Bacteria splits when its size has doubled
         self.biomass_threshold = biomass_threshold
+        self.alive = True
     
     def step(self):
         # self.uptake_nutrient()
@@ -50,6 +51,44 @@ class BacteriaAgent(mesa.Agent):
         return nutrient
         # return min(self.uptake_rate * nutrient, nutrient)
 
+    # need to implement living status of bacteria
+    def is_alive(self):
+        if (self.biomass > 0):
+            self.alive = True 
+        else:
+            self.alive = False
+        # NEED MORE LOGIC HERE
+
+    # def interact_with_antibiotic(self, antibiotic):
+
+    # def interact_with_enzyme(self, enzyme):
+    
+class AntibioticAgent(mesa.Agent):
+    def __init__(self, unique_id, model, concentration, threshold):
+        super().__init__(unique_id, model)
+        self.concentration = concentration
+        self.threshold = threshold
+
+    def step(self):
+        self.diffuse()
+
+    def diffuse(self):
+        # implement Fick's first law of diffusion here
+        pass
+
+    def interact_with_bacteria(self, bacteria):
+        # If the antibiotic concentration is above the bacteria's resistance threshold, kill the bacteria
+        if self.concentration > bacteria.resistance_threshold:
+            bacteria.alive = False
+
+class Enzyme(mesa.Agent):
+    def __init__(self, unique_id, model, enzyme_type):
+        super().__init__(unique_id, model)
+        self.enzyme_type = enzyme_type
+
+    def step(self):
+        pass
+
 class SimModel(mesa.Model):
     def __init__(self, params):
         super().__init__()
@@ -84,7 +123,7 @@ class SimModel(mesa.Model):
        
         # Initialize Agents
         for i in range(self.num_agents):
-            a = BacteriaAgent(i,self, uptake_rate, initial_size, initial_biomass, biomass_threshold) 
+            a = BacteriaAgent(i,self, uptake_rate, initial_size, initial_biomass, biomass_threshold, alive=True)
             self.schedule.add(a)
             x = self.random.randrange(self.grid.width)
             y = self.random.randrange(self.grid.height)

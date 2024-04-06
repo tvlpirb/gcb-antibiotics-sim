@@ -79,7 +79,8 @@ class SimModel(mesa.Model):
         # Initialize Grid Properties
         self.grid = mesa.space.MultiGrid(self.width,self.height,True)
         nutrient_layer = PropertyLayer("nutrient",self.width,self.height,default_value=0)
-        nutrient_layer.modify_cells(lambda x: np.random.random())
+        #nutrient_layer.modify_cells(lambda x: np.random.random())
+        nutrient_layer.set_cell((0,0),100)
         self.grid.add_property_layer(nutrient_layer)
         
         # Initialize Scheduler
@@ -88,10 +89,10 @@ class SimModel(mesa.Model):
         # Initialize Agents
         for i in range(self.num_agents):
             a = BacteriaAgent(i,self, params)
-            self.schedule.add(a)
+            #self.schedule.add(a)
             x = self.random.randrange(self.grid.width) # type: ignore
             y = self.random.randrange(self.grid.height) # type: ignore
-            self.grid.place_agent(a, (x, y))
+            #self.grid.place_agent(a, (x, y))
     
     def step(self):
         self.schedule.step()
@@ -100,18 +101,28 @@ class SimModel(mesa.Model):
         self.diffuse_nutrients_vectorized()
     
     def diffuse_nutrients_vectorized(self):
-        # Extract the current nutrient grid for convenience
         nutrient_grid = self.grid.properties["nutrient"].data
-        # Create padded grid to handle edge wrapping more easily
-        padded = np.pad(nutrient_grid, pad_width=1, mode='wrap')
-        # Calculate the diffusion from each cell to its neighbors
-        # For direct neighbors
-        direct_diffusion = padded[1:-1, :-2] + padded[1:-1, 2:] + padded[:-2, 1:-1] + padded[2:, 1:-1] - 4 * nutrient_grid
-        # For diagonal neighbors, adjusted by 1/sqrt(2)
-        diagonal_diffusion = (padded[:-2, :-2] + padded[:-2, 2:] + padded[2:, :-2] + padded[2:, 2:] - 4 * nutrient_grid) / np.sqrt(2)
-        # Sum of both diffusion effects
-        total_diffusion = direct_diffusion + diagonal_diffusion
-        # Apply the diffusion coefficient
-        nutrient_grid += total_diffusion * self.diffusion_coefficient
-        # Update the nutrient grid
+        
+        # Use 'edge' mode for reflective boundaries
+        padded = np.pad(nutrient_grid, pad_width=1, mode='edge')
+        
+        # Calculate direct neighbors diffusion with reflective boundary adjustments
+        direct_diffusion = (
+            padded[1:-1, :-2] + padded[1:-1, 2:] +
+            padded[:-2, 1:-1] + padded[2:, 1:-1] - 4 * nutrient_grid
+        )
+        
+        # Compute diffusion for diagonal neighbors with reflective boundary adjustments and adjusted by 1/sqrt(2)
+        diagonal_diffusion = (
+            padded[:-2, :-2] + padded[:-2, 2:] + padded[2:, :-2] + padded[2:, 2:] - 4 * nutrient_grid
+        ) / np.sqrt(2)
+        
+        # Combine both effects
+        total_diffusion = (direct_diffusion + diagonal_diffusion) * self.diffusion_coefficient
+        
+        # Apply diffusion symmetrically
+        nutrient_grid += total_diffusion
+        
+        # Normalize or ensure nutrient conservation if needed here.
+        nutrient_grid += -(nutrient_grid.sum() - self.grid.properties["nutrient"].data.sum()) / np.prod(nutrient_grid.shape)
         self.grid.properties["nutrient"].data = nutrient_grid

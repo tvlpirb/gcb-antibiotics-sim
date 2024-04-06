@@ -6,8 +6,8 @@ class BacteriaAgent(mesa.Agent):
     def __init__(self, unique_id, model, params):
         super().__init__(unique_id, model)
         self.params = params
-        self.uptake_rate_antibiotic = params["uptake_rate_antibiotic"]
-        self.uptake_rate = params["uptake_rate"]
+        self.antibiotic_intake = params["antibiotic_intake"]
+        self.nutrient_intake = params["nutrient_intake"]
         self.biomass = params["initial_biomass"]
         self.biomass_threshold = params["biomass_threshold"]
         self.alive = True
@@ -25,9 +25,8 @@ class BacteriaAgent(mesa.Agent):
     
     def grow(self):
         # Get the nutrient uptake
-        nutrient_uptake = self.uptake_nutrient()
-        # Increase the size based on the nutrient uptake
-        self.biomass += nutrient_uptake
+        nutrient_intake = self.intake_nutrient()
+        self.biomass += nutrient_intake
 
     def ready_to_split(self):
         # Bacteria is ready to split if its size is greater than the split 
@@ -44,13 +43,15 @@ class BacteriaAgent(mesa.Agent):
         # Halve the size and weight of the current bacterium
         self.biomass /= 2
 
-    def uptake_nutrient(self):
+    def intake_nutrient(self):
         x, y = self.pos # type: ignore
         # Get the current nutrient level in this cell
         nutrient = self.model.grid.properties["nutrient"].data[x][y] # type: ignore
+        # If nutrients are less than intake rate we take the remaining amount
+        intake = min(self.nutrient_intake,nutrient)
         # Uptake only the available nutrients
-        self.model.grid.properties["nutrient"].data[x][y] -= min(self.uptake_rate * nutrient, nutrient) # type: ignore
-        return nutrient
+        self.model.grid.properties["nutrient"].data[x][y] -= intake # type: ignore
+        return intake 
 
     def is_alive(self):
         minimum_nutrient_level = 0.1 # arbitrary value
@@ -79,8 +80,9 @@ class SimModel(mesa.Model):
         # Initialize Grid Properties
         self.grid = mesa.space.MultiGrid(self.width,self.height,True)
         nutrient_layer = PropertyLayer("nutrient",self.width,self.height,default_value=0)
+        # TODO We need a valid distribution of nutrients
         #nutrient_layer.modify_cells(lambda x: np.random.random())
-        nutrient_layer.set_cell((0,0),100)
+        nutrient_layer.set_cell((5,5),100)
         self.grid.add_property_layer(nutrient_layer)
         
         # Initialize Scheduler
@@ -89,16 +91,18 @@ class SimModel(mesa.Model):
         # Initialize Agents
         for i in range(self.num_agents):
             a = BacteriaAgent(i,self, params)
-            #self.schedule.add(a)
+            self.schedule.add(a)
             x = self.random.randrange(self.grid.width) # type: ignore
             y = self.random.randrange(self.grid.height) # type: ignore
-            #self.grid.place_agent(a, (x, y))
+            x = 5
+            y = 5
+            self.grid.place_agent(a, (x, y))
     
     def step(self):
         self.schedule.step()
         # Vectorized version should have a major speedup
         # Runtime went from 75 seconds to 5 seconds for 1000 steps
-        self.diffuse_nutrients_vectorized()
+        #self.diffuse_nutrients_vectorized()
     
     def diffuse_nutrients_vectorized(self):
         nutrient_grid = self.grid.properties["nutrient"].data

@@ -52,13 +52,17 @@ class BacteriaAgent(mesa.Agent):
         self.model.grid.properties["nutrient"].data[x][y] -= min(self.uptake_rate * nutrient, nutrient) # type: ignore
         return nutrient
 
-    # need to implement living status of bacteria
     def is_alive(self):
-        if (self.biomass > 0):
-            self.alive = True 
+        minimum_nutrient_level = 0.1 # arbitrary value
+        if self.biomass > 0:
+            x, y = self.pos # type: ignore
+            nutrient = self.model.grid.properties["nutrient"].data[x][y] # type: ignore
+            if nutrient >= minimum_nutrient_level:
+                self.alive = True
+            else:
+                self.alive = False
         else:
             self.alive = False
-        # NEED MORE LOGIC HERE
 
     # def interact_with_antibiotic(self, antibiotic):
 

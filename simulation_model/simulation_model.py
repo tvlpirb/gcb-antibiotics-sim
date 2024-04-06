@@ -11,9 +11,24 @@ class BacteriaAgent(mesa.Agent):
         self.biomass = params["initial_biomass"]
         self.biomass_threshold = params["biomass_threshold"]
         self.alive = True
+        # new parameters that still need to be tested
+        self.lag_phase_length = params["lag_phase_length"]
+        self.survival_cost = params["survival_cost"]
+        self.stationary_phase_metabolic_rate = params["stationary_phase_metabolic_rate"]
+        self.beta_lactamase_production_rate = params["beta_lactamase_production_rate"]
+        self.beta_lactamase_production_cost = params["beta_lactamase_production_cost"]
+        self.lag_phase = True
+        self.stationary_phase = False
     
     def step(self):
+        # lag phase # add more comprehensive comments
+        if self.lag_phase:
+            self.lag_phase_length -= 1
+            self.nutrient_intake += (self.params["nutrient_intake"] - self.nutrient_intake) / self.lag_phase_length
+            if self.lag_phase_length <= 0:
+                self.lag_phase = False
         self.grow()
+        self.is_alive()
         if self.ready_to_split():
             self.split()
             
@@ -27,6 +42,12 @@ class BacteriaAgent(mesa.Agent):
         # Get the nutrient uptake
         nutrient_intake = self.intake_nutrient()
         self.biomass += nutrient_intake
+
+        # Subtract survival cost
+        if self.stationary_phase:
+            self.biomass -= self.survival_cost * self.stationary_phase_metabolic_rate
+        else:
+            self.biomass -= self.survival_cost
 
     def ready_to_split(self):
         # Bacteria is ready to split if its size is greater than the split 

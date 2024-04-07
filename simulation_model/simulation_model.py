@@ -1,4 +1,5 @@
 import mesa
+import random
 from mesa.space import PropertyLayer
 import numpy as np
 
@@ -14,22 +15,22 @@ class BacteriaAgent(mesa.Agent):
         # new parameters that still need to be tested
         self.lag_phase_length = params["lag_phase_length"]
         self.survival_cost = params["survival_cost"]
-        self.stationary_phase_metabolic_rate = params["stationary_phase_metabolic_rate"]
-        self.beta_lactamase_production_rate = params["beta_lactamase_production_rate"]
-        self.beta_lactamase_production_cost = params["beta_lactamase_production_cost"]
-        self.lag_phase = True
+        #self.stationary_phase_metabolic_rate = params["stationary_phase_metabolic_rate"]
+        #self.beta_lactamase_production_rate = params["beta_lactamase_production_rate"]
+        #self.beta_lactamase_production_cost = params["beta_lactamase_production_cost"]
+        self.lag_phase = params["lag_phase_true"]
         self.stationary_phase = False
     
     def step(self):
-        # lag phase # add more comprehensive comments
         if self.lag_phase:
             self.lag_phase_length -= 1
-            self.nutrient_intake += (self.params["nutrient_intake"] - self.nutrient_intake) / self.lag_phase_length
+            #self.nutrient_intake += (self.params["nutrient_intake"] - self.nutrient_intake) / self.lag_phase_length
             if self.lag_phase_length <= 0:
                 self.lag_phase = False
         self.grow()
         self.is_alive()
-        if self.ready_to_split():
+        self.move()
+        if self.ready_to_split() and not self.lag_phase:
             self.split()
             
     def total_biomass(self):
@@ -58,6 +59,7 @@ class BacteriaAgent(mesa.Agent):
         # Create a new bacterium with half the size and biomass of the current one
         paramsC = self.params.copy()
         paramsC["initial_biomass"] = self.biomass / 2
+        paramsC["lag_phase_true"] = False,
         new_bacteria = BacteriaAgent(self.model.next_id(), self.model, paramsC)
         self.model.schedule.add(new_bacteria) # type: ignore
         self.model.grid.place_agent(new_bacteria, self.pos) # type: ignore
@@ -75,16 +77,27 @@ class BacteriaAgent(mesa.Agent):
         return intake 
 
     def is_alive(self):
-        minimum_nutrient_level = 0.1 # arbitrary value
-        if self.biomass > 0:
-            x, y = self.pos # type: ignore
-            nutrient = self.model.grid.properties["nutrient"].data[x][y] # type: ignore
-            if nutrient >= minimum_nutrient_level:
-                self.alive = True
-            else:
-                self.alive = False
+        if self.biomass < 0:
+            self.alive = False
+            return
+        x, y = self.pos # type: ignore
+        if self.biomass >= self.params["minimum_biomass"]:
+            self.alive = True
         else:
             self.alive = False
+
+    # TODO Consider checking that the cell isn't full before moving to it
+    def move(self):
+        x, y = self.pos # type: ignore
+        neighbors = self.model.grid.get_neighborhood((x, y), moore=True, include_center=True) # type: ignore
+        # Get neighborhood nutrient levels 
+        nutrient_levels = [(nx, ny, self.model.grid.properties["nutrient"].data[nx][ny]) for nx, ny in neighbors] # type: ignore
+        max_nutrient = max([level for _, _, level in nutrient_levels])
+        # Filter locations that have the maximum nutrient level
+        best_locations = [(nx, ny) for nx, ny, level in nutrient_levels if level == max_nutrient]
+        new_x, new_y = random.choice(best_locations)
+        # Move the agent to the chosen location with more or equal
+        self.model.grid.move_agent(self, (new_x, new_y)) # type: ignore
 
     # def interact_with_antibiotic(self, antibiotic):
 
@@ -99,11 +112,12 @@ class SimModel(mesa.Model):
         self.num_agents = params["num_agents"]
 
         # Initialize Grid Properties
-        self.grid = mesa.space.MultiGrid(self.width,self.height,True)
+        self.grid = mesa.space.MultiGrid(self.width,self.height,False)
         nutrient_layer = PropertyLayer("nutrient",self.width,self.height,default_value=0)
         # TODO We need a valid distribution of nutrients
         #nutrient_layer.modify_cells(lambda x: np.random.random())
-        nutrient_layer.set_cell((5,5),100)
+        nutrient_layer.set_cell((5,5),25)
+        nutrient_layer.set_cell((8,3),100)
         self.grid.add_property_layer(nutrient_layer)
         
         # Initialize Scheduler

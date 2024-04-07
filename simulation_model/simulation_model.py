@@ -15,7 +15,7 @@ class BacteriaAgent(mesa.Agent):
         # new parameters that still need to be tested
         self.lag_phase_length = params["lag_phase_length"]
         self.survival_cost = params["survival_cost"]
-        #self.stationary_phase_metabolic_rate = params["stationary_phase_metabolic_rate"]
+        #self.stationary_phase_metabolic_rate = params["stationary_phase_metabolic_rate"] # 0.2
         #self.beta_lactamase_production_rate = params["beta_lactamase_production_rate"]
         #self.beta_lactamase_production_cost = params["beta_lactamase_production_cost"]
         self.lag_phase = params["lag_phase_true"]
@@ -23,8 +23,10 @@ class BacteriaAgent(mesa.Agent):
     
     def step(self):
         if self.lag_phase:
+            # Decrease the length of the lag phase - acts as a unit of time
             self.lag_phase_length -= 1
             #self.nutrient_intake += (self.params["nutrient_intake"] - self.nutrient_intake) / self.lag_phase_length
+            # End the lag phase if its length is 0
             if self.lag_phase_length <= 0:
                 self.lag_phase = False
         self.grow()
@@ -46,13 +48,19 @@ class BacteriaAgent(mesa.Agent):
             return
         # Get the nutrient uptake
         nutrient_intake = self.intake_nutrient()
+        # If the model is in the stationary phase, adjust the nutrient intake
+        if self.stationary_phase:
+            nutrient_intake *= self.params["stationary_phase_metabolic_rate"]
+
         self.biomass += nutrient_intake
 
         # Subtract survival cost
         if self.stationary_phase:
-            self.biomass -= self.survival_cost * self.stationary_phase_metabolic_rate
+            # If the model is in the stationary phase, adjust the survival cost
+            self.biomass -= self.params["survival_cost"] * self.params["stationary_phase_metabolic_rate"]
         else:
-            self.biomass -= self.survival_cost
+            # If the model is not in the stationary phase, subtract the survival cost directly
+            self.biomass -= self.params["survival_cost"]
 
     def ready_to_split(self):
         # Bacteria is ready to split if its size is greater than the split 
@@ -192,4 +200,3 @@ class SimModel(mesa.Model):
         # Normalize or ensure nutrient conservation if needed here.
         nutrient_grid += -(nutrient_grid.sum() - self.grid.properties[key].data.sum()) / np.prod(nutrient_grid.shape)
         self.grid.properties[key].data = nutrient_grid
-

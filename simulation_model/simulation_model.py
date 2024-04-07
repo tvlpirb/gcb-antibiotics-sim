@@ -29,8 +29,10 @@ class BacteriaAgent(mesa.Agent):
                 self.lag_phase = False
         self.grow()
         self.is_alive()
+        if not self.alive:
+            return
         self.move()
-        if self.ready_to_split() and not self.lag_phase:
+        if self.ready_to_split():
             self.split()
             
     def total_biomass(self):
@@ -40,6 +42,8 @@ class BacteriaAgent(mesa.Agent):
         return total_biomass
     
     def grow(self):
+        if not self.alive:
+            return
         # Get the nutrient uptake
         nutrient_intake = self.intake_nutrient()
         self.biomass += nutrient_intake
@@ -77,27 +81,45 @@ class BacteriaAgent(mesa.Agent):
         return intake 
 
     def is_alive(self):
-        if self.biomass < 0:
-            self.alive = False
-            return
         x, y = self.pos # type: ignore
-        if self.biomass >= self.params["minimum_biomass"]:
-            self.alive = True
-        else:
+        if self.biomass < self.params["minimum_biomass"]:
             self.alive = False
 
     # TODO Consider checking that the cell isn't full before moving to it
     def move(self):
         x, y = self.pos # type: ignore
+        current_patch_agents = self.model.grid.get_cell_list_contents([(x, y)]) # type: ignore
+
+        # Overcrowding condition
+        if len(current_patch_agents) > 4:
+            print("Over")
+            self.move_overcrowded(x,y)
+        else:
+            neighbors = self.model.grid.get_neighborhood((x, y), moore=True, include_center=True) # type: ignore
+            # Get neighborhood nutrient levels 
+            nutrient_levels = [(nx, ny, self.model.grid.properties["nutrient"].data[nx][ny]) for nx, ny in neighbors] # type: ignore
+            max_nutrient = max([level for _, _, level in nutrient_levels])
+            # Filter locations that have the maximum nutrient level
+            best_locations = [(nx, ny) for nx, ny, level in nutrient_levels if level == max_nutrient]
+            new_x, new_y = random.choice(best_locations)
+            # Move the agent to the chosen location with more or equal
+            self.model.grid.move_agent(self, (new_x, new_y)) # type: ignore
+
+    def move_overcrowded(self,x,y):
         neighbors = self.model.grid.get_neighborhood((x, y), moore=True, include_center=True) # type: ignore
-        # Get neighborhood nutrient levels 
-        nutrient_levels = [(nx, ny, self.model.grid.properties["nutrient"].data[nx][ny]) for nx, ny in neighbors] # type: ignore
-        max_nutrient = max([level for _, _, level in nutrient_levels])
-        # Filter locations that have the maximum nutrient level
-        best_locations = [(nx, ny) for nx, ny, level in nutrient_levels if level == max_nutrient]
-        new_x, new_y = random.choice(best_locations)
-        # Move the agent to the chosen location with more or equal
-        self.model.grid.move_agent(self, (new_x, new_y)) # type: ignore
+        neighbor_biomass = dict()
+        for nx, ny in neighbors:
+            agents = self.model.grid.get_cell_list_contents([(nx, ny)])  # type: ignore
+            total_biomass = sum(agent.biomass for agent in agents)
+            neighbor_biomass[(nx, ny)] = total_biomass
+
+        total_neighbor_biomass = sum(neighbor_biomass.values()) + 0.001  # Avoid division by zero
+        probabilities = {loc: (1 - biomass / total_neighbor_biomass) for loc, biomass in neighbor_biomass.items()}
+        
+        chosen_location = random.choices(list(probabilities.keys()), weights=probabilities.values())[0]
+        
+        # Move agent to the new location
+        self.model.grid.move_agent(self, chosen_location)  # type: ignore
 
     # def interact_with_antibiotic(self, antibiotic):
 
@@ -114,11 +136,14 @@ class SimModel(mesa.Model):
         # Initialize Grid Properties
         self.grid = mesa.space.MultiGrid(self.width,self.height,False)
         nutrient_layer = PropertyLayer("nutrient",self.width,self.height,default_value=0)
+        antibiotic_layer = PropertyLayer("antibiotic",self.width,self.height,default_value=0)
         # TODO We need a valid distribution of nutrients
         #nutrient_layer.modify_cells(lambda x: np.random.random())
-        nutrient_layer.set_cell((5,5),25)
+        # NOTE This is hardcoded for testing purposes, REMOVE
+        nutrient_layer.set_cell((5,5),100)
         nutrient_layer.set_cell((8,3),100)
         self.grid.add_property_layer(nutrient_layer)
+        self.grid.add_property_layer(antibiotic_layer)
         
         # Initialize Scheduler
         self.schedule = mesa.time.RandomActivation(self)
@@ -129,6 +154,7 @@ class SimModel(mesa.Model):
             self.schedule.add(a)
             x = self.random.randrange(self.grid.width) # type: ignore
             y = self.random.randrange(self.grid.height) # type: ignore
+            # NOTE JUST FOR TESTING PURPOSES
             x = 5
             y = 5
             self.grid.place_agent(a, (x, y))
@@ -137,10 +163,11 @@ class SimModel(mesa.Model):
         self.schedule.step()
         # Vectorized version should have a major speedup
         # Runtime went from 75 seconds to 5 seconds for 1000 steps
-        #self.diffuse_nutrients_vectorized()
-    
-    def diffuse_nutrients_vectorized(self):
-        nutrient_grid = self.grid.properties["nutrient"].data
+        # NOTE DISABLED TEMPORATILY
+        #self.diffuse_vectorized("nutrient")
+
+    def diffuse_vectorized(self,key):
+        nutrient_grid = self.grid.properties[key].data
         
         # Use 'edge' mode for reflective boundaries
         padded = np.pad(nutrient_grid, pad_width=1, mode='edge')
@@ -163,5 +190,6 @@ class SimModel(mesa.Model):
         nutrient_grid += total_diffusion
         
         # Normalize or ensure nutrient conservation if needed here.
-        nutrient_grid += -(nutrient_grid.sum() - self.grid.properties["nutrient"].data.sum()) / np.prod(nutrient_grid.shape)
-        self.grid.properties["nutrient"].data = nutrient_grid
+        nutrient_grid += -(nutrient_grid.sum() - self.grid.properties[key].data.sum()) / np.prod(nutrient_grid.shape)
+        self.grid.properties[key].data = nutrient_grid
+

@@ -16,16 +16,18 @@ class BacteriaAgent(mesa.Agent):
         self.lag_phase_length = params["lag_phase_length"]
         self.survival_cost = params["survival_cost"]
         #self.stationary_phase_metabolic_rate = params["stationary_phase_metabolic_rate"] # 0.2
-        #self.beta_lactamase_production_rate = params["beta_lactamase_production_rate"]
+        self.beta_lactamase_production_rate = params["beta_lactamase_production_rate"]
         #self.beta_lactamase_production_cost = params["beta_lactamase_production_cost"]
         self.lag_phase = params["lag_phase_true"]
         self.stationary_phase = False
     
     def step(self):
+        self.interact_with_antibiotic()
+        
         if self.lag_phase:
             # Decrease the length of the lag phase - acts as a unit of time
             self.lag_phase_length -= 1
-            #self.nutrient_intake += (self.params["nutrient_intake"] - self.nutrient_intake) / self.lag_phase_length
+            #self.nutrient_intake += (self.params["nutrient_intake"] - self.nutrient_intake) / self.lag_phase_length # revisit might have a bug
             # End the lag phase if its length is 0
             if self.lag_phase_length <= 0:
                 self.lag_phase = False
@@ -36,6 +38,7 @@ class BacteriaAgent(mesa.Agent):
         self.move()
         if self.ready_to_split():
             self.split()
+
             
     def total_biomass(self):
         total_biomass = 0
@@ -124,14 +127,39 @@ class BacteriaAgent(mesa.Agent):
         total_neighbor_biomass = sum(neighbor_biomass.values()) + 0.001  # Avoid division by zero
         probabilities = {loc: (1 - biomass / total_neighbor_biomass) for loc, biomass in neighbor_biomass.items()}
         
-        chosen_location = random.choices(list(probabilities.keys()), weights=probabilities.values())[0]
+        chosen_location = random.choices(list(probabilities.keys()), weights=probabilities.values())[0] # type: ignore
         
         # Move agent to the new location
         self.model.grid.move_agent(self, chosen_location)  # type: ignore
+        
+    # ALL UNTESTED AS OF NOW
 
-    # def interact_with_antibiotic(self, antibiotic):
+    def calculate_MIC(self):
+        # MIC is inveresely proportional to the beta-lactamase production rate
+        # Need to experiementally find a better formula
+        MIC = 1/ self.params["beta_lactamase_production_rate"]
+        return MIC
 
-    # def interact_with_enzyme(self, enzyme):
+    # Updates the status of bacteria based on the antibiotic intake 
+    def update_status(self):
+        MIC = self.calculate_MIC()
+        if self.params["antibiotic_intake"] >= MIC:
+            self.alive = False
+
+    def update_beta_lactamase_production_rate(self):
+        # Beta-lactamase production rate is updated based on the antibiotic intake
+        self.params["beta_lactamase_production_rate"] = self.params["antibiotic_intake"] / self.params["beta_lactamase_production_cost"]
+
+    def interact_with_antibiotic(self):
+        # Get the current position of the bacterium
+        x, y = self.pos # type: ignore
+        # Get the current antibiotic level in this cell
+        antibiotic = self.model.grid.properties["antibiotic"].data[x][y] # type: ignore
+        # Set the antibiotic intake to the current antibiotic level
+        self.params["antibiotic_intake"] = antibiotic
+        # Update the bacterium's status and beta-lactamase production rate
+        self.update_status()
+        self.update_beta_lactamase_production_rate()
 
 class SimModel(mesa.Model):
     def __init__(self, params):
@@ -173,6 +201,8 @@ class SimModel(mesa.Model):
         # Runtime went from 75 seconds to 5 seconds for 1000 steps
         # NOTE DISABLED TEMPORATILY
         #self.diffuse_vectorized("nutrient")
+
+    
 
     def diffuse_vectorized(self,key):
         nutrient_grid = self.grid.properties[key].data

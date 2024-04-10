@@ -12,25 +12,26 @@ class BacteriaAgent(mesa.Agent):
         self.biomass = params["initial_biomass"]
         self.biomass_threshold = params["biomass_threshold"]
         self.alive = True
+        self.growth_inhibited = False
         # new parameters that still need to be tested
         self.lag_phase_length = params["lag_phase_length"]
         self.survival_cost = params["survival_cost"]
         #self.stationary_phase_metabolic_rate = params["stationary_phase_metabolic_rate"] # 0.2
-        self.beta_lactamase_production_rate = params["beta_lactamase_production_rate"]
+        self.enzyme_production_rate = params["enzyme_production_rate"]
         #self.beta_lactamase_production_cost = params["beta_lactamase_production_cost"]
         self.lag_phase = params["lag_phase_true"]
         self.stationary_phase = False
     
     def step(self):
         self.interact_with_antibiotic()
-        
         if self.lag_phase:
-            # Decrease the length of the lag phase - acts as a unit of time
             self.lag_phase_length -= 1
-            #self.nutrient_intake += (self.params["nutrient_intake"] - self.nutrient_intake) / self.lag_phase_length # revisit might have a bug
+            #self.nutrient_intake += ((self.params["nutrient_intake"] - self.nutrient_intake)
+            #     / self.lag_phase_length) # revisit might have a bug
             # End the lag phase if its length is 0
             if self.lag_phase_length <= 0:
                 self.lag_phase = False
+
         self.grow()
         self.is_alive()
         if not self.alive:
@@ -38,19 +39,13 @@ class BacteriaAgent(mesa.Agent):
         self.move()
         if self.ready_to_split():
             self.split()
-
-            
-    def total_biomass(self):
-        total_biomass = 0
-        for agent in self.model.schedule.agents: # type: ignore
-            total_biomass += agent.biomass
-        return total_biomass
     
     def grow(self):
         if not self.alive:
             return
-        # Get the nutrient uptake
         nutrient_intake = self.intake_nutrient()
+        # NOTE Nutrient intake is constantly updated if this is true for each step. Do 
+        # we really want it to constantly increase/decrease? 
         # If the model is in the stationary phase, adjust the nutrient intake
         if self.stationary_phase:
             nutrient_intake *= self.params["stationary_phase_metabolic_rate"]
@@ -68,7 +63,9 @@ class BacteriaAgent(mesa.Agent):
     def ready_to_split(self):
         # Bacteria is ready to split if its size is greater than the split 
         # threshold 
-        return self.biomass >= self.biomass_threshold
+        return self.biomass >= self.biomass_threshold and \
+            not self.growth_inhibited and \
+            not self.lag_phase
     
     def split(self):
         # Create a new bacterium with half the size and biomass of the current one
@@ -103,7 +100,6 @@ class BacteriaAgent(mesa.Agent):
 
         # Overcrowding condition
         if len(current_patch_agents) > 4:
-            print("Over")
             self.move_overcrowded(x,y)
         else:
             neighbors = self.model.grid.get_neighborhood((x, y), moore=True, include_center=True) # type: ignore
@@ -111,13 +107,15 @@ class BacteriaAgent(mesa.Agent):
             nutrient_levels = [(nx, ny, self.model.grid.properties["nutrient"].data[nx][ny]) for nx, ny in neighbors] # type: ignore
             max_nutrient = max([level for _, _, level in nutrient_levels])
             # Filter locations that have the maximum nutrient level
-            best_locations = [(nx, ny) for nx, ny, level in nutrient_levels if level == max_nutrient]
+            best_locations = [(nx, ny) for nx, ny, level in nutrient_levels \
+                              if level == max_nutrient]
             new_x, new_y = random.choice(best_locations)
             # Move the agent to the chosen location with more or equal
             self.model.grid.move_agent(self, (new_x, new_y)) # type: ignore
 
     def move_overcrowded(self,x,y):
-        neighbors = self.model.grid.get_neighborhood((x, y), moore=True, include_center=True) # type: ignore
+        neighbors = self.model.grid.get_neighborhood( # type: ignore
+            (x, y), moore=True, include_center=True) 
         neighbor_biomass = dict()
         for nx, ny in neighbors:
             agents = self.model.grid.get_cell_list_contents([(nx, ny)])  # type: ignore
@@ -125,47 +123,43 @@ class BacteriaAgent(mesa.Agent):
             neighbor_biomass[(nx, ny)] = total_biomass
 
         total_neighbor_biomass = sum(neighbor_biomass.values()) + 0.001  # Avoid division by zero
-        probabilities = {loc: (1 - biomass / total_neighbor_biomass) for loc, biomass in neighbor_biomass.items()}
+        probabilities = {loc: (1 - biomass / total_neighbor_biomass) \
+                         for loc, biomass in neighbor_biomass.items()}
         
-        chosen_location = random.choices(list(probabilities.keys()), weights=probabilities.values())[0] # type: ignore
+        chosen_location = random.choices(
+            list(probabilities.keys()), weights=probabilities.values())[0] # type: ignore
         
         # Move agent to the new location
         self.model.grid.move_agent(self, chosen_location)  # type: ignore
-        
-    # ALL UNTESTED AS OF NOW
 
-    def calculate_MIC(self):
-        # MIC is inveresely proportional to the beta-lactamase production rate
-        # Need to experiementally find a better formula
-        MIC = 1/ self.params["beta_lactamase_production_rate"]
-        return MIC
-
-    # Updates the status of bacteria based on the antibiotic intake 
-    def update_status(self):
-        MIC = self.calculate_MIC()
-        if self.params["antibiotic_intake"] >= MIC:
-            self.alive = False
-
-    def update_beta_lactamase_production_rate(self):
-        # Beta-lactamase production rate is updated based on the antibiotic intake
-        self.params["beta_lactamase_production_rate"] = self.params["antibiotic_intake"] / self.params["beta_lactamase_production_cost"]
-
+    # When the bacteria interact with antibiotics they intake antibiotics however,
+    # in our model we won't take this detail into account and factor activation only
+    # when the minimum inhibitory concentration (MIC) is present. Due to the cell wall
+    # being damaged by the antibiotic we will assume that some biomass is lost and that
+    # our cell cannot grow. Our cell dies when it can't grow and it reaches a specific
+    # minimum threshold biomass where it can no longer survive. 
     def interact_with_antibiotic(self):
-        # Get the current position of the bacterium
         x, y = self.pos # type: ignore
-        # Get the current antibiotic level in this cell
-        antibiotic = self.model.grid.properties["antibiotic"].data[x][y] # type: ignore
-        # Set the antibiotic intake to the current antibiotic level
-        self.params["antibiotic_intake"] = antibiotic
-        # Update the bacterium's status and beta-lactamase production rate
-        self.update_status()
-        self.update_beta_lactamase_production_rate()
+        antibiotic_concentration = self.model.grid.properties["antibiotic"].data[x][y] # type: ignore
+
+        # Antibiotic concentration is at MIC, response mechanism is activated
+        if antibiotic_concentration >= self.params["MIC"]:
+            self.growth_inhibited = True
+            # Start producing enzymes
+            # NOTE Consider checking if we have a resistant strain or not
+            self.model.grid.properties["time_enzyme"].data[x][y] += 1
+            self.model.grid.properties["enzyme"].data[x][y] += self.enzyme_production_rate # type: ignore
+            self.biomass -= 1 # NOTE Arbitrary value cost
+        else:
+            self.growth_inhibited = False
+
 
 class SimModel(mesa.Model):
     def __init__(self, params):
         super().__init__()
         self.width = params["width"]
         self.height = params["height"]
+        self.params = params
         self.diffusion_coefficient = params["diffusion_coefficient"]
         self.num_agents = params["num_agents"]
 
@@ -173,6 +167,8 @@ class SimModel(mesa.Model):
         self.grid = mesa.space.MultiGrid(self.width,self.height,False)
         nutrient_layer = PropertyLayer("nutrient",self.width,self.height,default_value=0)
         antibiotic_layer = PropertyLayer("antibiotic",self.width,self.height,default_value=0)
+        enzyme_layer = PropertyLayer("enzyme",self.width, self.height, default_value=0)
+        time_layer = PropertyLayer("time_enzyme",self.width, self.height,default_value=-1)
         # TODO We need a valid distribution of nutrients
         #nutrient_layer.modify_cells(lambda x: np.random.random())
         # NOTE This is hardcoded for testing purposes, REMOVE
@@ -180,6 +176,8 @@ class SimModel(mesa.Model):
         nutrient_layer.set_cell((8,3),100)
         self.grid.add_property_layer(nutrient_layer)
         self.grid.add_property_layer(antibiotic_layer)
+        self.grid.add_property_layer(enzyme_layer)
+        self.grid.add_property_layer(time_layer)
         
         # Initialize Scheduler
         self.schedule = mesa.time.RandomActivation(self)
@@ -200,11 +198,44 @@ class SimModel(mesa.Model):
         # Vectorized version should have a major speedup
         # Runtime went from 75 seconds to 5 seconds for 1000 steps
         # NOTE DISABLED TEMPORATILY
-        #self.diffuse_vectorized("nutrient")
+        #self.diffuse_vectorized("nutrient",self.diffusion_coefficient)
+        self.degrade_antibiotic()
 
-    
+    # Go through every cell and take into account the antibiotic concentration
+    # and the enzyme level to degrade the antibiotics
+    # We make use of the formula V0 = V_max * [S] /K_m + [S] to determine the 
+    # rate at which the antibiotics should degrade, this equation comes from 
+    # the standard Michealis Menten kinetic equations and the inspiration for 
+    # this specific choice of modelling comes from DOI: 10.1089/cmb.2018.0064. 
+    def degrade_antibiotic(self):
+        for x in range(self.width):
+            for y in range (self.height):
+                antibiotic_conc = self.grid.properties["antibiotic"].data[x][y] 
+                V_0 = ((self.params["v_max"] * antibiotic_conc) / 
+                       (self.params["k_m"] + antibiotic_conc))
+                new_conc = max(0, antibiotic_conc-V_0)
+                self.grid.properties["antibiotic"].data[x][y] = new_conc
 
-    def diffuse_vectorized(self,key):
+    # Degrade the enzymes by halving it each time, we have a time layer to track
+    # how long an enzyme has been in a patch and we aim to halve it only after the
+    # set time. There is however an issue as this doesn't yet account for diffusion 
+    # of enzymes 
+    def degrade_enzyme(self):
+        # TODO Determine an appropriate half life value, currently 206
+        cells_halve = np.where(self.grid.properties["time_enzyme"].data >= 206)
+        for x,y in zip(*cells_halve):
+            self.grid.properties["enzyme"].data[x][y] /= 2
+            # Reset the timer
+            self.grid.properties["time_enzyme"].data[x][y] = 0
+
+    # Given a key and a coefficient we will modify the appropriate grid layer
+    # for diffusion, we make use of a discretized version of ficks law where
+    # for adjacent patches we use D(delt concentration) and for diagonal patches
+    # we use D(delta concentration)/sqrt(2) where D is the diffusion constant.
+    # The following implementation treats the grid as non-torus and therefore
+    # we pad the edges with zeros and have reflective boundaries for diffusion.
+    # Following benchmarking this new method is magnitudes faster due to vectorization
+    def diffuse_vectorized(self,key,coefficient):
         nutrient_grid = self.grid.properties[key].data
         
         # Use 'edge' mode for reflective boundaries
@@ -222,11 +253,9 @@ class SimModel(mesa.Model):
         ) / np.sqrt(2)
         
         # Combine both effects
-        total_diffusion = (direct_diffusion + diagonal_diffusion) * self.diffusion_coefficient
-        
-        # Apply diffusion symmetrically
+        total_diffusion = (direct_diffusion + diagonal_diffusion) * coefficient
         nutrient_grid += total_diffusion
-        
-        # Normalize or ensure nutrient conservation if needed here.
-        nutrient_grid += -(nutrient_grid.sum() - self.grid.properties[key].data.sum()) / np.prod(nutrient_grid.shape)
+        # Normalize or ensure nutrient conservation due to it being lost
+        nutrient_grid += (-(nutrient_grid.sum() - self.grid.properties[key].data.sum()) / 
+                          np.prod(nutrient_grid.shape))
         self.grid.properties[key].data = nutrient_grid

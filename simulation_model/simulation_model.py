@@ -62,11 +62,13 @@ class BacteriaAgent(mesa.Agent):
 
     def ready_to_split(self):
         # Bacteria is ready to split if its size is greater than the split 
-        # threshold 
+        # threshold and it's past the lag phase 
         return self.biomass >= self.biomass_threshold and \
             not self.growth_inhibited and \
             not self.lag_phase
     
+    # Once a bacteria is ready to split we create a new agent and pass the same
+    # parameters with some alterations to it.
     def split(self):
         # Create a new bacterium with half the size and biomass of the current one
         paramsC = self.params.copy()
@@ -78,6 +80,8 @@ class BacteriaAgent(mesa.Agent):
         # Halve the size and weight of the current bacterium
         self.biomass /= 2
 
+    # This function implements nutrient intake which is experimentally
+    # determined
     def intake_nutrient(self):
         x, y = self.pos # type: ignore
         # Get the current nutrient level in this cell
@@ -88,31 +92,54 @@ class BacteriaAgent(mesa.Agent):
         self.model.grid.properties["nutrient"].data[x][y] -= intake # type: ignore
         return intake 
 
+    # The cell is dead once it goes below it's minimum biomass
     def is_alive(self):
         x, y = self.pos # type: ignore
         if self.biomass < self.params["minimum_biomass"]:
             self.alive = False
 
-    # TODO Consider checking that the cell isn't full before moving to it
+    # Movement logic for bacteria, the bacterium either move towards the 
+    # patch with more nutrients if it is at most one away or it moves in
+    # a random fashion in search of nutrients. We take into account overcrowding
+    # which is experimentally determined. The bacteria don't move into a cell if
+    # it will cause overcrowding and if there is overcrowding then we call 
+    # move_overcrowded to deal with this condition
     def move(self):
         x, y = self.pos # type: ignore
         current_patch_agents = self.model.grid.get_cell_list_contents([(x, y)]) # type: ignore
 
         # Overcrowding condition
-        if len(current_patch_agents) > 4:
+        if len(current_patch_agents) > self.params["max_in_patch"]:
             self.move_overcrowded(x,y)
         else:
             neighbors = self.model.grid.get_neighborhood((x, y), moore=True, include_center=True) # type: ignore
             # Get neighborhood nutrient levels 
-            nutrient_levels = [(nx, ny, self.model.grid.properties["nutrient"].data[nx][ny]) for nx, ny in neighbors] # type: ignore
+            nutrient_levels = [(nx, ny, self.model.grid.properties["nutrient"].data[nx][ny]) \
+                               for nx, ny in neighbors] 
             max_nutrient = max([level for _, _, level in nutrient_levels])
             # Filter locations that have the maximum nutrient level
             best_locations = [(nx, ny) for nx, ny, level in nutrient_levels \
                               if level == max_nutrient]
-            new_x, new_y = random.choice(best_locations)
-            # Move the agent to the chosen location with more or equal
-            self.model.grid.move_agent(self, (new_x, new_y)) # type: ignore
 
+            # Further filter locations based on agent count to avoid overcrowding  
+            suitable_locations = []
+            for loc in best_locations:
+                # Check how many agents are in the considered cell
+                cell_agents_count = len(self.model.grid.get_cell_list_contents([loc])) # type: ignore
+                # If moving to this cell does not cause overcrowding, add to suitable locations
+                if cell_agents_count <= self.params["max_in_patch"]:
+                    suitable_locations.append(loc)
+
+            if suitable_locations:
+                new_x, new_y = random.choice(suitable_locations)
+                self.model.grid.move_agent(self, (new_x, new_y)) # type: ignore
+
+    # Given that the current patch is overcrowded we move bacteria to a patch
+    # relative to its biomass. We calculate probabilities with the surrounding
+    # patches and forcefully move the bacterium to that patch.
+    # NOTE There is a current flaw which is if the neighboring cells are also
+    # overcrowded. We could possibly kill the bacterium and release the nutrients
+    # to the environment but this case needs further consideration.
     def move_overcrowded(self,x,y):
         neighbors = self.model.grid.get_neighborhood( # type: ignore
             (x, y), moore=True, include_center=True) 

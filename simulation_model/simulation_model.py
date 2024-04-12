@@ -147,7 +147,7 @@ class BacteriaAgent(mesa.Agent):
             self.growth_inhibited = True
             # Start producing enzymes
             # NOTE Consider checking if we have a resistant strain or not
-            self.model.grid.properties["time_enzyme"].data[x][y] += 1
+            self.model.grid.properties["time_enzyme"].data[x][y] += 1 # type: ignore
             self.model.grid.properties["enzyme"].data[x][y] += self.enzyme_production_rate # type: ignore
             self.biomass -= 1 # NOTE Arbitrary value cost
         else:

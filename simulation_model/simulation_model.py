@@ -11,6 +11,7 @@ class BacteriaAgent(mesa.Agent):
         self.nutrient_intake = params["nutrient_intake"]
         self.biomass = params["initial_biomass"]
         self.biomass_threshold = params["biomass_threshold"]
+        self.resistant = params["resistant"]
         self.alive = True
         self.growth_inhibited = False
         # new parameters that still need to be tested
@@ -172,11 +173,12 @@ class BacteriaAgent(mesa.Agent):
         # Antibiotic concentration is at MIC, response mechanism is activated
         if antibiotic_concentration >= self.params["MIC"]:
             self.growth_inhibited = True
+            self.biomass -= 1 # NOTE Arbitrary value cost
             # Start producing enzymes
             # NOTE Consider checking if we have a resistant strain or not
-            self.model.grid.properties["time_enzyme"].data[x][y] += 1 # type: ignore
-            self.model.grid.properties["enzyme"].data[x][y] += self.enzyme_production_rate # type: ignore
-            self.biomass -= 1 # NOTE Arbitrary value cost
+            if self.resistant:
+                self.model.grid.properties["time_enzyme"].data[x][y] += 1 # type: ignore
+                self.model.grid.properties["enzyme"].data[x][y] += self.enzyme_production_rate # type: ignore
         else:
             self.growth_inhibited = False
 
@@ -187,6 +189,8 @@ class SimModel(mesa.Model):
         self.width = params["width"]
         self.height = params["height"]
         self.params = params
+        # NOTE Diffusion happens a little too fast so consider altering this 
+        # constant for now to account for it
         self.diffusion_coefficient = params["diffusion_coefficient"]
         self.num_agents = params["num_agents"]
 
@@ -196,7 +200,6 @@ class SimModel(mesa.Model):
         antibiotic_layer = PropertyLayer("antibiotic",self.width,self.height,default_value=0)
         enzyme_layer = PropertyLayer("enzyme",self.width, self.height, default_value=0)
         time_layer = PropertyLayer("time_enzyme",self.width, self.height,default_value=-1)
-        # TODO We need a valid distribution of nutrients
         #nutrient_layer.modify_cells(lambda x: np.random.random())
         # NOTE This is hardcoded for testing purposes, REMOVE
         nutrient_layer.set_cell((5,5),100)
@@ -248,8 +251,7 @@ class SimModel(mesa.Model):
     # set time. There is however an issue as this doesn't yet account for diffusion 
     # of enzymes 
     def degrade_enzyme(self):
-        # TODO Determine an appropriate half life value, currently 206
-        cells_halve = np.where(self.grid.properties["time_enzyme"].data >= 206)
+        cells_halve = np.where(self.grid.properties["time_enzyme"].data >= self.params["enzyme_half_life"])
         for x,y in zip(*cells_halve):
             self.grid.properties["enzyme"].data[x][y] /= 2
             # Reset the timer

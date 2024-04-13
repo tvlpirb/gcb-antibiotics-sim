@@ -14,7 +14,6 @@ class BacteriaAgent(mesa.Agent):
         self.resistant = params["resistant"]
         self.alive = True
         self.growth_inhibited = False
-        # new parameters that still need to be tested
         self.lag_phase_length = params["lag_phase_length"]
         self.survival_cost = params["survival_cost"]
         #self.stationary_phase_metabolic_rate = params["stationary_phase_metabolic_rate"] # 0.2
@@ -105,10 +104,15 @@ class BacteriaAgent(mesa.Agent):
     # which is experimentally determined. The bacteria don't move into a cell if
     # it will cause overcrowding and if there is overcrowding then we call 
     # move_overcrowded to deal with this condition
+    # NOTE We need to consider if bacteria which is inhibited from growth due to 
+    # antibiotics should still move or not
     def move(self):
         x, y = self.pos # type: ignore
         current_patch_agents = self.model.grid.get_cell_list_contents([(x, y)]) # type: ignore
 
+        # See note about this
+        if self.growth_inhibited:
+            return
         # Overcrowding condition
         if len(current_patch_agents) > self.params["max_in_patch"]:
             self.move_overcrowded(x,y)
@@ -204,6 +208,8 @@ class SimModel(mesa.Model):
         # NOTE This is hardcoded for testing purposes, REMOVE
         nutrient_layer.set_cell((5,5),100)
         nutrient_layer.set_cell((8,3),100)
+        antibiotic_layer.set_cell((5,5),10)
+        antibiotic_layer.set_cell((5,7),10)
         self.grid.add_property_layer(nutrient_layer)
         self.grid.add_property_layer(antibiotic_layer)
         self.grid.add_property_layer(enzyme_layer)
@@ -228,7 +234,7 @@ class SimModel(mesa.Model):
         # Vectorized version should have a major speedup
         # Runtime went from 75 seconds to 5 seconds for 1000 steps
         # NOTE DISABLED TEMPORATILY
-        #self.diffuse_vectorized("nutrient",self.diffusion_coefficient)
+        self.diffuse_vectorized("nutrient",self.diffusion_coefficient)
         self.degrade_antibiotic()
 
     # Go through every cell and take into account the antibiotic concentration

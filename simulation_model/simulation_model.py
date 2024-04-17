@@ -16,11 +16,9 @@ class BacteriaAgent(mesa.Agent):
         self.growth_inhibited = False
         self.lag_phase_length = params["lag_phase_length"]
         self.survival_cost = params["survival_cost"]
-        #self.stationary_phase_metabolic_rate = params["stationary_phase_metabolic_rate"] # 0.2
         self.enzyme_production_rate = params["enzyme_production_rate"]
         #self.beta_lactamase_production_cost = params["beta_lactamase_production_cost"]
         self.lag_phase = params["lag_phase_true"]
-        self.stationary_phase = False
     
     def step(self):
         self.interact_with_antibiotic()
@@ -38,6 +36,7 @@ class BacteriaAgent(mesa.Agent):
             return
         self.move()
         if self.ready_to_split():
+            self.model.num_agents += 1
             self.split()
     
     def grow(self):
@@ -46,19 +45,9 @@ class BacteriaAgent(mesa.Agent):
         nutrient_intake = self.intake_nutrient()
         # NOTE Nutrient intake is constantly updated if this is true for each step. Do 
         # we really want it to constantly increase/decrease? 
-        # If the model is in the stationary phase, adjust the nutrient intake
-        if self.stationary_phase:
-            nutrient_intake *= self.params["stationary_phase_metabolic_rate"]
 
         self.biomass += nutrient_intake
-
-        # Subtract survival cost
-        if self.stationary_phase:
-            # If the model is in the stationary phase, adjust the survival cost
-            self.biomass -= self.params["survival_cost"] * self.params["stationary_phase_metabolic_rate"]
-        else:
-            # If the model is not in the stationary phase, subtract the survival cost directly
-            self.biomass -= self.params["survival_cost"]
+        self.biomass -= self.params["survival_cost"]
 
     def ready_to_split(self):
         # Bacteria is ready to split if its size is greater than the split 
@@ -97,6 +86,7 @@ class BacteriaAgent(mesa.Agent):
         x, y = self.pos # type: ignore
         if self.biomass < self.params["minimum_biomass"]:
             self.alive = False
+            self.model.dead_agents += 1 # type: ignore
 
     # Movement logic for bacteria, the bacterium either move towards the 
     # patch with more nutrients if it is at most one away or it moves in
@@ -197,6 +187,9 @@ class SimModel(mesa.Model):
         # constant for now to account for it
         self.diffusion_coefficient = params["diffusion_coefficient"]
         self.num_agents = params["num_agents"]
+        self.dead_agents = 0
+        self.time = 0
+        self.dose_added = False
 
         # Initialize Grid Properties
         self.grid = mesa.space.MultiGrid(self.width,self.height,False)
@@ -204,12 +197,15 @@ class SimModel(mesa.Model):
         antibiotic_layer = PropertyLayer("antibiotic",self.width,self.height,default_value=0)
         enzyme_layer = PropertyLayer("enzyme",self.width, self.height, default_value=0)
         time_layer = PropertyLayer("time_enzyme",self.width, self.height,default_value=-1)
-        #nutrient_layer.modify_cells(lambda x: np.random.random())
-        # NOTE This is hardcoded for testing purposes, REMOVE
-        nutrient_layer.set_cell((5,5),100)
-        nutrient_layer.set_cell((8,3),100)
-        antibiotic_layer.set_cell((5,5),10)
-        antibiotic_layer.set_cell((5,7),10)
+        min_value = self.params["min_nutrients"]
+        max_value = self.params["max_nutrients"]
+        # Everything in the environment is either distrubuted randomly or
+        # uniformly where everycell has the exact same amount of nutrients
+        if self.params["nutrient_distribution"] == "uniform":
+            nutrient_layer.modify_cells(max_value)
+        else:
+            nutrient_layer.modify_cells(lambda x: np.random.uniform(
+                min_value, max_value))
         self.grid.add_property_layer(nutrient_layer)
         self.grid.add_property_layer(antibiotic_layer)
         self.grid.add_property_layer(enzyme_layer)
@@ -219,23 +215,69 @@ class SimModel(mesa.Model):
         self.schedule = mesa.time.RandomActivation(self)
        
         # Initialize Agents
-        for i in range(self.num_agents):
-            a = BacteriaAgent(i,self, params)
-            self.schedule.add(a)
-            x = self.random.randrange(self.grid.width) # type: ignore
-            y = self.random.randrange(self.grid.height) # type: ignore
-            # NOTE JUST FOR TESTING PURPOSES
-            x = 5
-            y = 5
-            self.grid.place_agent(a, (x, y))
+        if self.params["agents_enabled"]:
+            for i in range(self.num_agents):
+                a = BacteriaAgent(i,self, params)
+                self.schedule.add(a)
+                x = self.random.randrange(self.grid.width) # type: ignore
+                y = self.random.randrange(self.grid.height) # type: ignore
+                self.grid.place_agent(a, (x, y))
     
     def step(self):
+        # Terminating condition since all bacteria are dead
+        if self.num_agents == self.dead_agents:
+            return
+        self.time += 1
         self.schedule.step()
         # Vectorized version should have a major speedup
         # Runtime went from 75 seconds to 5 seconds for 1000 steps
-        # NOTE DISABLED TEMPORATILY
         self.diffuse_vectorized("nutrient",self.diffusion_coefficient)
+        if self.params["antibiotics_diff_enabled"]:
+            self.diffuse_vectorized("antibiotic",self.params["antibiotics_coefficient"])
+        if self.params["add_condition"] != "disabled":
+            self.add_antibiotics()
         self.degrade_antibiotic()
+
+    # Given the antibiotics we place them based on the time step or the agent count
+    def add_antibiotics(self):
+        if self.dose_added:
+            return
+
+        if self.params["add_condition"] == "time_step":
+            if self.time == self.params["add_time"]:
+                self.dose_added = True
+        elif self.params["add_condition"] == "agent_count":
+            if self.num_agents == self.params["add_count"]:
+                self.dose_added = True
+        
+        if self.dose_added:
+            self.place_antibiotics()
+
+    #  
+    def place_antibiotics(self):
+        if self.params["add_loc"] == "random":
+            x = self.random.randrange(self.grid.width) # type: ignore
+            y = self.random.randrange(self.grid.height) # type: ignore
+            self.grid.properties["antiobitic"].data[x][y] = self.params["add_conc"]
+        elif self.params["add_loc"] == "dense":
+            bacteria_counts = np.zeros((self.width, self.height))
+    
+            for agent in self.schedule.agents:
+                # Ensure we count only living bacteria
+                if agent.alive: # type: ignore
+                    x, y = agent.pos # type: ignore
+                    bacteria_counts[x][y] += 1 # type: ignore
+    
+            # Find the patches with the highest number of bacteria
+            max_density = np.max(bacteria_counts)
+            # It's possible to have multiple patches with the same maximum density
+            max_density_locations = np.argwhere(bacteria_counts == max_density)
+            
+            chosen_location = random.choice(max_density_locations)
+            x, y = chosen_location
+
+            self.grid.properties["antibiotic"].data[x][y] = self.params["add_conc"]
+
 
     # Go through every cell and take into account the antibiotic concentration
     # and the enzyme level to degrade the antibiotics

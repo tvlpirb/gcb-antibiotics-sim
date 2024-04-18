@@ -19,7 +19,13 @@ class BacteriaAgent(mesa.Agent):
         self.enzyme_production_rate = params["enzyme_production_rate"]
         #self.beta_lactamase_production_cost = params["beta_lactamase_production_cost"]
         self.lag_phase = params["lag_phase_true"]
-        self.active_timer = 50
+        # Active timer is how long a bacteria needs to wait after being subjected to 
+        # antibiotics before it can start to grow again, resistant bacteria will need
+        # less time to be active again
+        if not self.params["resistant"]:
+            self.active_timer = 200
+        else:
+            self.active_timer = 50
     
     def step(self):
         self.interact_with_antibiotic()

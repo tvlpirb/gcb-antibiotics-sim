@@ -19,6 +19,7 @@ class BacteriaAgent(mesa.Agent):
         self.enzyme_production_rate = params["enzyme_production_rate"]
         #self.beta_lactamase_production_cost = params["beta_lactamase_production_cost"]
         self.lag_phase = params["lag_phase_true"]
+        self.active_timer = 50
     
     def step(self):
         self.interact_with_antibiotic()
@@ -84,7 +85,7 @@ class BacteriaAgent(mesa.Agent):
     # The cell is dead once it goes below it's minimum biomass
     def is_alive(self):
         x, y = self.pos # type: ignore
-        if self.biomass < self.params["minimum_biomass"]:
+        if self.biomass < self.params["minimum_biomass"] and self.alive:
             self.alive = False
             self.model.dead_agents += 1 # type: ignore
 
@@ -167,13 +168,17 @@ class BacteriaAgent(mesa.Agent):
         # Antibiotic concentration is at MIC, response mechanism is activated
         if antibiotic_concentration >= self.params["MIC"]:
             self.growth_inhibited = True
-            self.biomass -= 1 # NOTE Arbitrary value cost
+            self.biomass -= 10 # NOTE Arbitrary value cost
             # Start producing enzymes
             # NOTE Consider checking if we have a resistant strain or not
             if self.resistant:
                 self.model.grid.properties["time_enzyme"].data[x][y] += 1 # type: ignore
                 self.model.grid.properties["enzyme"].data[x][y] += self.enzyme_production_rate # type: ignore
         else:
+            # Some delay before being back to growing
+            if self.growth_inhibited and self.active_timer >= 1:
+                self.active_timer -= 1
+                return
             self.growth_inhibited = False
 
 
@@ -244,10 +249,10 @@ class SimModel(mesa.Model):
             return
 
         if self.params["add_condition"] == "time_step":
-            if self.time == self.params["add_time"]:
+            if self.time >= self.params["add_time"]:
                 self.dose_added = True
         elif self.params["add_condition"] == "agent_count":
-            if self.num_agents == self.params["add_count"]:
+            if self.num_agents >= self.params["add_count"]:
                 self.dose_added = True
         
         if self.dose_added:

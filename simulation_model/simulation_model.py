@@ -244,40 +244,21 @@ class SimModel(mesa.Model):
             self.add_antibiotics()
         self.degrade_antibiotic()
 
-    # Given the antibiotics we place them based on the time step or the agent count
-    # def add_antibiotics(self):
-    #     if self.dose_added:
-    #         return
-
-    #     if self.params["add_condition"] == "time_step":
-    #         if self.time >= self.params["add_time"]:
-    #             self.dose_added = True
-    #     elif self.params["add_condition"] == "agent_count":
-    #         if self.num_agents >= self.params["add_count"]:
-    #             self.dose_added = True
-        
-    #     if self.dose_added:
-    #         self.place_antibiotics()
-
-    # Updated version
     def add_antibiotics(self):
-        if self.dose_added:
-            return
         if self.params["add_condition"] == "time_step":
             # Check if the current time is in the list of times to add a dose
             if self.time in self.params["add_times"]:
                 # If the dose for this time has not been added yet
                 if self.time not in self.doses_added:
-                    self.dose_added = True
+                    print("Added")
                     self.doses_added.append(self.time)
-        elif self.params["add_condition"] == "agent_count":
+                    self.place_antibiotics()
+        elif self.params["add_condition"] == "agent_count" and not self.dose_added:
             if self.num_agents >= self.params["add_count"]:
                 self.dose_added = True
                 self.doses_added.append(self.time)
+                self.place_antibiotics()
 
-        if self.doses_added:
-            self.place_antibiotics()
- 
     def place_antibiotics(self):
         if self.params["add_loc"] == "random":
             x = self.random.randrange(self.grid.width) # type: ignore
@@ -336,26 +317,26 @@ class SimModel(mesa.Model):
     # we pad the edges with zeros and have reflective boundaries for diffusion.
     # Following benchmarking this new method is magnitudes faster due to vectorization
     def diffuse_vectorized(self,key,coefficient):
-        nutrient_grid = self.grid.properties[key].data
+        grid = self.grid.properties[key].data
         
         # Use 'edge' mode for reflective boundaries
-        padded = np.pad(nutrient_grid, pad_width=1, mode='edge')
+        padded = np.pad(grid, pad_width=1, mode='edge')
         
         # Calculate direct neighbors diffusion with reflective boundary adjustments
         direct_diffusion = (
             padded[1:-1, :-2] + padded[1:-1, 2:] +
-            padded[:-2, 1:-1] + padded[2:, 1:-1] - 4 * nutrient_grid
+            padded[:-2, 1:-1] + padded[2:, 1:-1] - 4 * grid
         )
         
         # Compute diffusion for diagonal neighbors with reflective boundary adjustments and adjusted by 1/sqrt(2)
         diagonal_diffusion = (
-            padded[:-2, :-2] + padded[:-2, 2:] + padded[2:, :-2] + padded[2:, 2:] - 4 * nutrient_grid
+            padded[:-2, :-2] + padded[:-2, 2:] + padded[2:, :-2] + padded[2:, 2:] - 4 * grid
         ) / np.sqrt(2)
         
         # Combine both effects
         total_diffusion = (direct_diffusion + diagonal_diffusion) * coefficient
-        nutrient_grid += total_diffusion
+        grid += total_diffusion
         # Normalize or ensure nutrient conservation due to it being lost
-        nutrient_grid += (-(nutrient_grid.sum() - self.grid.properties[key].data.sum()) / 
-                          np.prod(nutrient_grid.shape))
-        self.grid.properties[key].data = nutrient_grid
+        grid += (-(grid.sum() - self.grid.properties[key].data.sum()) / 
+                          np.prod(grid.shape))
+        self.grid.properties[key].data = grid

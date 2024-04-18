@@ -1,9 +1,28 @@
-**Simulation of Bacterial-Antibiotic Interactions Using Agent-based Modeling**
+## Simulation of Bacterial-Antibiotic Interactions Using Agent-based Modeling
+> Abstract: Agent-based models are stochastic models constructed from the bottom up, meaning that
+individual agents are assigned certain attributes. They are computer simulations used to study in-
+teractions between people, things, places, and time (Agent-Based Modeling, 2022). In our context, we
+used agent-based modeling to build a simulation model of bacterial growth and antibiotic resistance
+to understand the complex interactions between bacteria and antibiotics with each other and their
+environment. This approach offers a logical framework for deducing low-level biochemical details
+about the individual molecular components to high-level pharmacodynamic parameters, like an
+antibiotic's MIC (Minimum Inhibitory Concentration). However, note that this simulation of the
+bacteria and antibiotics shown is for the general populations of bacteria and antibiotics in an envi-
+ronment with predefined parameters and is only concerned with vertical transfer mechanisms of
+antibiotic resistance genes. By applying the computational methods our work has developed, we
+aim to give researchers a more efficient way to discover new ways to fight against antibiotic re-
+sistance.
 
-**Computational Question**
-Can we use evolutionary simulations to model the emergence and spread of antibiotic resistance under different conditions due to antibiotic effects?
+**Note this work has been completed as part of the course 02-251 Great Ideas in Computational Biology
+at Carnegie Mellon University Qatar**
 
-**Methodology** [Rough Draft]
-We will simulate three major components, pathogens, antibiotics, and enzymes which will interact in a 2D environment with each other (only vertical gene transfer). The environment will contain nutrients and the interactions between the various components will be determined by making use of existing literature for the equations and parameters provided.
-Our approach towards this model will follow a bottom-up perspective where we will model individual bacteria which are agents and interact with the environment and other bacteria. 
-For modeling enzyme activity and antibiotic degradation we will make use of Michaelis-Menten kinetics equations [Source: https://pubs.acs.org/doi/10.1021/bi201284u]. In terms of modeling each bacterium, it will be assigned various parameters such as growth rate, nutrient uptake rate etc.
+## Environment Setup
+```
+$ git clone https://github.com/tvlpirb/gcb-antibiotics-sim.git 
+$ cd gcb-antibiotics-sim
+$ conda env create -f environment.yml
+```
+
+## Running
+To run this program please see the relevant notebook in the root directory. If you're interested in 
+reading the paper you can also find it in the root directory.

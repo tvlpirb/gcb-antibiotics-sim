@@ -195,6 +195,7 @@ class SimModel(mesa.Model):
         self.dead_agents = 0
         self.time = 0
         self.dose_added = False
+        self.doses_added = [] # list for antibiotic doses
 
         # Initialize Grid Properties
         self.grid = mesa.space.MultiGrid(self.width,self.height,False)
@@ -244,21 +245,39 @@ class SimModel(mesa.Model):
         self.degrade_antibiotic()
 
     # Given the antibiotics we place them based on the time step or the agent count
+    # def add_antibiotics(self):
+    #     if self.dose_added:
+    #         return
+
+    #     if self.params["add_condition"] == "time_step":
+    #         if self.time >= self.params["add_time"]:
+    #             self.dose_added = True
+    #     elif self.params["add_condition"] == "agent_count":
+    #         if self.num_agents >= self.params["add_count"]:
+    #             self.dose_added = True
+        
+    #     if self.dose_added:
+    #         self.place_antibiotics()
+
+    # Updated version
     def add_antibiotics(self):
         if self.dose_added:
             return
-
         if self.params["add_condition"] == "time_step":
-            if self.time >= self.params["add_time"]:
-                self.dose_added = True
+            # Check if the current time is in the list of times to add a dose
+            if self.time in self.params["add_times"]:
+                # If the dose for this time has not been added yet
+                if self.time not in self.doses_added:
+                    self.dose_added = True
+                    self.doses_added.append(self.time)
         elif self.params["add_condition"] == "agent_count":
             if self.num_agents >= self.params["add_count"]:
                 self.dose_added = True
-        
-        if self.dose_added:
-            self.place_antibiotics()
+                self.doses_added.append(self.time)
 
-    #  
+        if self.doses_added:
+            self.place_antibiotics()
+ 
     def place_antibiotics(self):
         if self.params["add_loc"] == "random":
             x = self.random.randrange(self.grid.width) # type: ignore
@@ -282,7 +301,6 @@ class SimModel(mesa.Model):
             x, y = chosen_location
 
             self.grid.properties["antibiotic"].data[x][y] = self.params["add_conc"]
-
 
     # Go through every cell and take into account the antibiotic concentration
     # and the enzyme level to degrade the antibiotics

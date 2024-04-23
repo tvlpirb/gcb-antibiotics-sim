@@ -16,9 +16,18 @@ sistance.
 **Note this work has been completed as part of the course 02-251 Great Ideas in Computational Biology
 at Carnegie Mellon University Qatar**
 
+## Dependencies
+This project manages dependencies using the conda system so please ensure that is [installed](https://conda.io/projects/conda/en/latest/user-guide/install/index.html). You can also manually install the following libraries but there's not gurantee it would work:
+- mesa
+- numpy
+- matplotlib
+- seaborn
+- importlib
+- pandas
+
 ## Environment Setup
 ```
-$ git clone https://github.com/tvlpirb/gcb-antibiotics-sim.git 
+$ git clone https://github.com/tvlpirb/gcb-antibiotics-sim.git
 $ cd gcb-antibiotics-sim
 $ conda env create -f environment.yml
 ```
